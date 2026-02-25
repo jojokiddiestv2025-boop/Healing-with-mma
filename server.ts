@@ -20,18 +20,19 @@ const initializeFirebaseAdmin = () => {
     return admin.firestore();
   }
 
-  const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT;
+  const serviceAccountB64 = process.env.FIREBASE_SERVICE_ACCOUNT;
 
-  if (serviceAccountJson) {
+  if (serviceAccountB64) {
     try {
+      const serviceAccountJson = Buffer.from(serviceAccountB64, 'base64').toString('utf-8');
       const serviceAccount = JSON.parse(serviceAccountJson);
       admin.initializeApp({
         credential: admin.credential.cert(serviceAccount),
       });
-      console.log("Firebase Admin SDK initialized successfully using service account.");
+      console.log("Firebase Admin SDK initialized successfully from Base64 encoded service account.");
     } catch (e: any) {
-      console.error("CRITICAL: Failed to parse FIREBASE_SERVICE_ACCOUNT. Ensure it is a valid, unescaped JSON string.", e.message);
-      throw new Error("Firebase Admin initialization failed: Invalid service account JSON.");
+      console.error("CRITICAL: Failed to decode or parse FIREBASE_SERVICE_ACCOUNT. Ensure it is a valid Base64-encoded JSON string.", e.message);
+      throw new Error("Firebase Admin initialization failed: Invalid service account format.");
     }
   } else {
     if (process.env.NODE_ENV === 'production') {

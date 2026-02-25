@@ -10,48 +10,7 @@ import crypto from "crypto";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-import admin from "firebase-admin";
-
-// Initialize Firebase Admin
-let db: admin.firestore.Firestore;
-
-const initializeFirebaseAdmin = () => {
-  if (admin.apps.length) {
-    return admin.firestore();
-  }
-
-  const serviceAccountB64 = process.env.FIREBASE_SERVICE_ACCOUNT;
-
-  if (serviceAccountB64) {
-    try {
-      const serviceAccountJson = Buffer.from(serviceAccountB64, 'base64').toString('utf-8');
-      const serviceAccount = JSON.parse(serviceAccountJson);
-      admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount),
-      });
-      console.log("Firebase Admin SDK initialized successfully from Base64 encoded service account.");
-    } catch (e: any) {
-      console.error("CRITICAL: Failed to decode or parse FIREBASE_SERVICE_ACCOUNT. Ensure it is a valid Base64-encoded JSON string.", e.message);
-      throw new Error("Firebase Admin initialization failed: Invalid service account format.");
-    }
-  } else {
-    if (process.env.NODE_ENV === 'production') {
-      console.error("CRITICAL: FIREBASE_SERVICE_ACCOUNT is not set in the production environment.");
-      throw new Error("Firebase Admin initialization failed: Service account secret is missing.");
-    } else {
-      console.warn("WARNING: FIREBASE_SERVICE_ACCOUNT not found. Initializing with default project ID for local development.");
-      admin.initializeApp({ projectId: 'healing-with-mma' });
-    }
-  }
-  return admin.firestore();
-};
-
-try {
-  db = initializeFirebaseAdmin();
-} catch (error) {
-  console.error("Could not initialize server due to Firebase Admin SDK error.", error);
-  throw error;
-}
+// Session-based premium access. No database needed.
 const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY;
 const APP_URL = process.env.APP_URL || "http://localhost:3000";
 
@@ -63,42 +22,11 @@ async function createServer() {
   app.use(cookieParser());
 
   // API Routes
-  app.get("/api/subscription/status/:userId", async (req, res) => {
-    const { userId } = req.params;
-    try {
-      const doc = await db.collection("subscriptions").doc(userId).get();
-      
-      if (!doc.exists) {
-        return res.json({ isPremium: false, hasUsedTrial: false, expiresAt: null });
-      }
-
-      const data = doc.data() as any;
-      const now = new Date();
-      const expiresAt = data.expiresAt ? new Date(data.expiresAt) : null;
-      const isPremium = data.isPremium === 1 && expiresAt && expiresAt > now;
-
-      res.json({ isPremium, hasUsedTrial: data.hasUsedTrial === 1, expiresAt: data.expiresAt });
-    } catch (error) {
-      console.error("Error fetching subscription:", error);
-      res.status(500).json({ error: "Internal server error" });
+  app.get("/api/subscription/status/:userId", (req, res) => {
+    if (req.cookies.premium_session === 'true') {
+      return res.json({ isPremium: true });
     }
-  });
-
-  app.post("/api/subscription/use-trial", async (req, res) => {
-    const { userId } = req.body;
-    if (!userId) return res.status(400).json({ error: "userId required" });
-
-    try {
-      await db.collection("subscriptions").doc(userId).set({
-        hasUsedTrial: 1,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
-      }, { merge: true });
-
-      res.json({ success: true });
-    } catch (error) {
-      console.error("Error using trial:", error);
-      res.status(500).json({ error: "Internal server error" });
-    }
+    return res.json({ isPremium: false });
   });
 
   // Paystack Verification
@@ -164,14 +92,13 @@ async function createServer() {
       });
 
       if (response.data.status && response.data.data.status === "success") {
-        const expiresAt = new Date();
-        expiresAt.setMonth(expiresAt.getMonth() + 1);
-
-        await db.collection("subscriptions").doc(userId).set({
-          isPremium: 1,
-          expiresAt: expiresAt.toISOString(),
-          updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
+        // Set a cookie to grant premium access for this session for 1 hour
+        res.cookie('premium_session', 'true', {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax',
+          maxAge: 3600 * 1000 // 1 hour
+        });
 
         res.clearCookie("pending_payment_user_id");
         return res.redirect("/?payment_success=true");
@@ -182,39 +109,6 @@ async function createServer() {
       console.error("Paystack verification error:", error);
       return res.redirect("/?payment_error=api_error");
     }
-  });
-
-  // Paystack Webhook
-  app.post("/api/payment/webhook", async (req, res) => {
-    const hash = crypto
-      .createHmac("sha512", PAYSTACK_SECRET_KEY || "")
-      .update(JSON.stringify(req.body))
-      .digest("hex");
-
-    if (hash !== req.headers["x-paystack-signature"]) {
-      return res.status(401).send("Invalid signature");
-    }
-
-    const event = req.body;
-    if (event.event === "charge.success") {
-      const { metadata } = event.data;
-      const userId = metadata?.user_id;
-
-      if (userId) {
-        const expiresAt = new Date();
-        expiresAt.setMonth(expiresAt.getMonth() + 1);
-
-        await db.collection("subscriptions").doc(userId).set({
-          isPremium: 1,
-          expiresAt: expiresAt.toISOString(),
-          updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
-        
-        console.log(`Webhook: Premium granted to user ${userId}`);
-      }
-    }
-
-    res.status(200).send("Webhook received");
   });
 
   // Vite middleware for development

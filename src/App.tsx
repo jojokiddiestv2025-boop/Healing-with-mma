@@ -16,7 +16,6 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [isPremium, setIsPremium] = useState(false);
-  const [hasUsedTrial, setHasUsedTrial] = useState(false);
   const [isInitializingPayment, setIsInitializingPayment] = useState(false);
   const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
@@ -60,23 +59,8 @@ export default function App() {
       const res = await fetch(`/api/subscription/status/${userId}`);
       const data = await res.json();
       setIsPremium(data.isPremium);
-      setHasUsedTrial(data.hasUsedTrial);
     } catch (err) {
       console.error("Failed to check subscription", err);
-    }
-  };
-
-  const useTrial = async () => {
-    if (!user) return;
-    try {
-      await fetch('/api/subscription/use-trial', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.uid })
-      });
-      setHasUsedTrial(true);
-    } catch (err) {
-      console.error("Failed to use trial", err);
     }
   };
 
@@ -85,14 +69,8 @@ export default function App() {
       connect();
       return;
     }
-
-    if (hasUsedTrial) {
-      setShowPremiumModal(true);
-      return;
-    }
-
-    // Use trial and connect
-    await useTrial();
+    // For non-premium users, the app will now show the modal after a few turns.
+    // This logic is handled in the useEffect hook.
     connect();
   };
 
@@ -126,8 +104,11 @@ export default function App() {
   };
 
   useEffect(() => {
-    // The user said "once start conversation starts they have used their free trail"
-  }, [turnCount, isPremium, isConnected, disconnect]);
+    if (turnCount >= 5 && !isPremium) {
+      setShowPremiumModal(true);
+      disconnect(); // End the session when the paywall appears
+    }
+  }, [turnCount, isPremium, disconnect]);
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();

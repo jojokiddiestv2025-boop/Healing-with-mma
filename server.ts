@@ -2,7 +2,6 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
-import cookieParser from "cookie-parser";
 
 
 
@@ -18,7 +17,6 @@ async function createServer() {
   const PORT = 3000;
 
   app.use(express.json());
-  app.use(cookieParser());
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {

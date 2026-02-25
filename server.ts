@@ -13,35 +13,41 @@ const __dirname = path.dirname(__filename);
 // Initialize Firebase Admin
 let db: admin.firestore.Firestore;
 
-if (process.env.VERCEL && process.env.NODE_ENV === 'production') {
-  if (!process.env.FIREBASE_SERVICE_ACCOUNT) {
-    throw new Error('FIREBASE_SERVICE_ACCOUNT is not set in production on Vercel.');
+const initializeFirebaseAdmin = () => {
+  if (admin.apps.length) {
+    return admin.firestore();
   }
-  try {
-    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-    if (!admin.apps.length) {
-      admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
-    }
-    db = admin.firestore();
-  } catch (error) {
-    console.error('Failed to parse or initialize Firebase Admin SDK:', error);
-    throw new Error('Firebase Admin initialization failed.');
-  }
-} else {
-  // Local development or non-Vercel environment
-  if (!admin.apps.length) {
+
+  const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT;
+
+  if (serviceAccountJson) {
     try {
-      if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-        const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-        admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
-      } else {
-        admin.initializeApp({ projectId: 'healing-with-mma' });
-      }
-    } catch (error) {
-      console.error('Firebase Admin initialization error (local):', error);
+      const serviceAccount = JSON.parse(serviceAccountJson);
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount),
+      });
+      console.log("Firebase Admin SDK initialized successfully using service account.");
+    } catch (e: any) {
+      console.error("CRITICAL: Failed to parse FIREBASE_SERVICE_ACCOUNT. Ensure it is a valid, unescaped JSON string.", e.message);
+      throw new Error("Firebase Admin initialization failed: Invalid service account JSON.");
+    }
+  } else {
+    if (process.env.NODE_ENV === 'production') {
+      console.error("CRITICAL: FIREBASE_SERVICE_ACCOUNT is not set in the production environment.");
+      throw new Error("Firebase Admin initialization failed: Service account secret is missing.");
+    } else {
+      console.warn("WARNING: FIREBASE_SERVICE_ACCOUNT not found. Initializing with default project ID for local development.");
+      admin.initializeApp({ projectId: 'healing-with-mma' });
     }
   }
-  db = admin.firestore();
+  return admin.firestore();
+};
+
+try {
+  db = initializeFirebaseAdmin();
+} catch (error) {
+  console.error("Could not initialize server due to Firebase Admin SDK error.", error);
+  throw error;
 }
 const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY;
 const APP_URL = process.env.APP_URL || "http://localhost:3000";

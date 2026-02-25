@@ -11,25 +11,38 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Initialize Firebase Admin
-if (!admin.apps.length) {
-  try {
-    if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-      const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-      admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount)
-      });
-    } else {
-      // Fallback for local dev or if using default credentials
-      admin.initializeApp({
-        projectId: "healing-with-mma"
-      });
-    }
-  } catch (error) {
-    console.error("Firebase Admin initialization error:", error);
-  }
-}
+let db: admin.firestore.Firestore;
 
-const db = admin.firestore();
+if (process.env.VERCEL && process.env.NODE_ENV === 'production') {
+  if (!process.env.FIREBASE_SERVICE_ACCOUNT) {
+    throw new Error('FIREBASE_SERVICE_ACCOUNT is not set in production on Vercel.');
+  }
+  try {
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    if (!admin.apps.length) {
+      admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+    }
+    db = admin.firestore();
+  } catch (error) {
+    console.error('Failed to parse or initialize Firebase Admin SDK:', error);
+    throw new Error('Firebase Admin initialization failed.');
+  }
+} else {
+  // Local development or non-Vercel environment
+  if (!admin.apps.length) {
+    try {
+      if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+        const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+        admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+      } else {
+        admin.initializeApp({ projectId: 'healing-with-mma' });
+      }
+    } catch (error) {
+      console.error('Firebase Admin initialization error (local):', error);
+    }
+  }
+  db = admin.firestore();
+}
 const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY;
 const APP_URL = process.env.APP_URL || "http://localhost:3000";
 

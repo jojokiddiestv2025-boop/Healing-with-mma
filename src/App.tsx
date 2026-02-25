@@ -15,10 +15,7 @@ export default function App() {
   const [showAuthPage, setShowAuthPage] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const [isPremium, setIsPremium] = useState(false);
-  const [isInitializingPayment, setIsInitializingPayment] = useState(false);
-  const [showPremiumModal, setShowPremiumModal] = useState(false);
-  const [paymentStatus, setPaymentStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
+
   
   // Auth Form State
   const [email, setEmail] = useState('');
@@ -32,83 +29,22 @@ export default function App() {
       setUser(currentUser);
       setAuthLoading(false);
       if (currentUser) {
-        checkSubscription(currentUser.uid);
+
       }
     });
 
-    // Check for payment feedback in URL
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('payment_success') === 'true') {
-      setPaymentStatus({ type: 'success', message: 'Payment successful! Your premium access is now active.' });
-      // Clean up URL
-      window.history.replaceState({}, document.title, window.location.pathname);
-    } else if (params.get('payment_error')) {
-      const error = params.get('payment_error');
-      let message = 'Payment verification failed. Please contact support.';
-      if (error === 'missing_data') message = 'Payment data missing. Please try again.';
-      if (error === 'verification_failed') message = 'Paystack could not verify this transaction.';
-      setPaymentStatus({ type: 'error', message });
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
+
 
     return () => unsubscribe();
   }, []);
 
-  const checkSubscription = async (userId: string) => {
-    try {
-      const res = await fetch(`/api/subscription/status/${userId}`);
-      const data = await res.json();
-      setIsPremium(data.isPremium);
-    } catch (err) {
-      console.error("Failed to check subscription", err);
-    }
-  };
-
   const handleStartConversation = async () => {
-    if (isPremium) {
-      connect();
-      return;
-    }
-    // For non-premium users, the app will now show the modal after a few turns.
-    // This logic is handled in the useEffect hook.
     connect();
   };
 
-  const handlePaystackClick = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    if (!user || !user.email) return;
 
-    setIsInitializingPayment(true);
-    try {
-      // Set cookie as backup for callback
-      document.cookie = `pending_payment_user_id=${user.uid}; path=/; max-age=3600; SameSite=None; Secure`;
 
-      const res = await fetch('/api/payment/initialize', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.uid, email: user.email })
-      });
-      const data = await res.json();
-      
-      if (data.authorization_url) {
-        window.location.href = data.authorization_url;
-      } else {
-        throw new Error("Failed to get checkout URL");
-      }
-    } catch (err) {
-      console.error("Payment initialization failed", err);
-      setPaymentStatus({ type: 'error', message: 'Failed to start payment process. Please try again.' });
-    } finally {
-      setIsInitializingPayment(false);
-    }
-  };
 
-  useEffect(() => {
-    if (turnCount >= 5 && !isPremium) {
-      setShowPremiumModal(true);
-      disconnect(); // End the session when the paywall appears
-    }
-  }, [turnCount, isPremium, disconnect]);
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -438,33 +374,14 @@ export default function App() {
                 Counseling Session
               </motion.p>
               <span className="text-zinc-300 text-[10px]">•</span>
-              {isPremium ? (
-                <motion.span 
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[9px] font-bold uppercase tracking-tighter rounded-md border border-amber-200"
-                >
-                  Premium
-                </motion.span>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <motion.span 
-                    initial={{ opacity: 0, scale: 0.8 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="px-2 py-0.5 bg-zinc-100 text-zinc-600 text-[9px] font-bold uppercase tracking-tighter rounded-md border border-zinc-200"
-                  >
-                    Trial
-                  </motion.span>
-                  <motion.p 
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.15 }}
-                    className="text-emerald-600 text-[10px] uppercase tracking-widest font-bold"
-                  >
-                    Powered by Mine ai
-                  </motion.p>
-                </div>
-              )}
+              <motion.p 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.15 }}
+                className="text-emerald-600 text-[10px] uppercase tracking-widest font-bold"
+              >
+                Powered by Mine ai
+              </motion.p>
             </div>
           </button>
           
@@ -501,13 +418,7 @@ export default function App() {
             <button className="p-3 rounded-full bg-white border border-zinc-200 shadow-sm hover:shadow-md transition-all text-zinc-600">
               <Info size={20} />
             </button>
-            <button 
-              onClick={() => setShowPremiumModal(true)}
-              className="hidden sm:flex items-center gap-2 px-4 py-2 bg-amber-50 text-amber-700 rounded-full text-xs font-bold border border-amber-200 hover:bg-amber-100 transition-all"
-            >
-              <Heart size={14} fill="currentColor" />
-              {isPremium ? 'Book Session' : 'Subscription'}
-            </button>
+
             <a 
               href="https://mine-ai-2-0.vercel.app/" 
               target="_blank" 
@@ -624,17 +535,7 @@ export default function App() {
               )}
             </motion.button>
 
-            {!isPremium && !isConnected && (
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => setShowPremiumModal(true)}
-                className="flex items-center gap-3 px-8 py-4 bg-white text-amber-600 border-2 border-amber-100 rounded-full font-medium shadow-lg hover:bg-amber-50 transition-all"
-              >
-                <Heart size={20} fill="currentColor" />
-                Upgrade to Premium
-              </motion.button>
-            )}
+
           </div>
 
           <p className="text-zinc-400 text-[10px] uppercase tracking-[0.2em] font-medium">
@@ -702,116 +603,9 @@ export default function App() {
           </>
         )}
       </AnimatePresence>
-      {/* Payment Feedback Toast */}
-      <AnimatePresence>
-        {paymentStatus && (
-          <motion.div
-            initial={{ opacity: 0, y: 50 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 50 }}
-            className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[110] w-full max-w-sm px-6"
-          >
-            <div className={`p-4 rounded-2xl shadow-2xl flex items-center gap-3 ${
-              paymentStatus.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
-            }`}>
-              {paymentStatus.type === 'success' ? <Heart size={20} fill="currentColor" /> : <AlertCircle size={20} />}
-              <p className="text-sm font-medium">{paymentStatus.message}</p>
-              <button onClick={() => setPaymentStatus(null)} className="ml-auto opacity-70 hover:opacity-100">
-                <X size={18} />
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
-      {/* Premium Modal */}
-      <AnimatePresence>
-        {showPremiumModal && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-zinc-900/60 backdrop-blur-md"
-            />
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0, y: 20 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              className="relative w-full max-w-md bg-white rounded-[32px] p-8 shadow-2xl text-center"
-            >
-              <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
-                <Heart size={32} fill="currentColor" />
-              </div>
-              <h2 className="text-3xl font-serif font-medium text-zinc-900 mb-4">Upgrade to Premium</h2>
-              <p className="text-zinc-500 mb-8 leading-relaxed">
-                You've used your free trial session. To continue your healing journey with unlimited conversations, please upgrade to Premium.
-              </p>
-              
-              <div className="bg-zinc-50 rounded-2xl p-6 mb-8 text-left">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-zinc-900 font-medium">Premium Monthly</span>
-                  <span className="text-emerald-600 font-bold">₦5,000 / mo</span>
-                </div>
-                <ul className="text-xs text-zinc-500 space-y-2">
-                  <li className="flex items-center gap-2">
-                    <div className="w-1 h-1 bg-emerald-400 rounded-full" />
-                    Unlimited voice conversations
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <div className="w-1 h-1 bg-emerald-400 rounded-full" />
-                    Full session transcripts
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <div className="w-1 h-1 bg-emerald-400 rounded-full" />
-                    Priority access to new features
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <div className="w-1 h-1 bg-emerald-400 rounded-full" />
-                    <span className="font-bold text-emerald-700">Live Session Booking</span>
-                  </li>
-                </ul>
-              </div>
 
-              <div className="bg-amber-50 rounded-2xl p-4 mb-8 text-left border border-amber-100">
-                <h4 className="text-xs font-bold text-amber-800 uppercase tracking-widest mb-2 flex items-center gap-2">
-                  <MessageCircle size={14} />
-                  Book a Live Session
-                </h4>
-                <p className="text-[11px] text-amber-700 mb-2">
-                  Premium members can book 1-on-1 sessions with MMA.
-                </p>
-                <div className="space-y-1">
-                  <a href="tel:+2347031629832" className="text-xs font-medium text-zinc-900 flex items-center gap-2 hover:text-emerald-600 transition-colors">
-                    <div className="w-4 h-4 rounded-full bg-white flex items-center justify-center text-[8px]">📞</div>
-                    +234 7031629832
-                  </a>
-                  <a href="mailto:globalinitiative18@gmail.com" className="text-xs font-medium text-zinc-900 flex items-center gap-2 hover:text-emerald-600 transition-colors">
-                    <div className="w-4 h-4 rounded-full bg-white flex items-center justify-center text-[8px]">✉️</div>
-                    globalinitiative18@gmail.com
-                  </a>
-                </div>
-              </div>
 
-              <div className="space-y-4">
-                <button 
-                  onClick={handlePaystackClick}
-                  disabled={isInitializingPayment}
-                  className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-medium shadow-lg shadow-emerald-100 hover:bg-emerald-700 transition-all disabled:opacity-50"
-                >
-                  {isInitializingPayment ? 'Preparing Checkout...' : 'Pay with Paystack'}
-                </button>
-                <button 
-                  onClick={() => setShowPremiumModal(false)}
-                  className="text-zinc-400 text-sm hover:text-zinc-600 transition-colors w-full"
-                >
-                  Maybe later
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }

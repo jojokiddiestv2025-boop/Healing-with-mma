@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://healing-with-mma.vercel.app/sitemap.xml

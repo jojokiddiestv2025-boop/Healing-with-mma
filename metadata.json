@@ -1,0 +1,5 @@
+{
+  "name": "Healing with MMA",
+  "description": "Healing with MMA is an AI-powered emotional support platform. Experience a gentle, voice-first space for reflection and well-being, powered by Mine ai.",
+  "requestFramePermissions": ["microphone"]
+}

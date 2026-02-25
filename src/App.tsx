@@ -126,8 +126,6 @@ export default function App() {
   };
 
   useEffect(() => {
-    // We no longer limit by turn count, but by session start
-    // However, we can still keep this as a fallback or remove it
     // The user said "once start conversation starts they have used their free trail"
   }, [turnCount, isPremium, isConnected, disconnect]);
 

@@ -5,10 +5,12 @@ import { fileURLToPath } from "url";
 import axios from "axios";
 import cookieParser from "cookie-parser";
 import crypto from "crypto";
-import admin from "firebase-admin";
+
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+import admin from "firebase-admin";
 
 // Initialize Firebase Admin
 let db: admin.firestore.Firestore;

@@ -2,7 +2,7 @@ import { Mic, MicOff, MessageCircle, Info, X, AlertCircle, ArrowRight, Heart, Lo
 import { motion, AnimatePresence } from 'motion/react';
 import { useLiveSession } from './hooks/useLiveSession';
 import { VoiceVisualizer } from './components/VoiceVisualizer';
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { auth, googleProvider } from './lib/firebase';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, User, signInWithPopup } from 'firebase/auth';
@@ -527,7 +527,7 @@ export default function App() {
               className="hidden sm:flex items-center gap-2 px-4 py-2 bg-amber-50 text-amber-700 rounded-full text-xs font-bold border border-amber-200 hover:bg-amber-100 transition-all"
             >
               <Heart size={14} fill="currentColor" />
-              Subscription
+              {isPremium ? 'Book Session' : 'Subscription'}
             </button>
             <a 
               href="https://mine-ai-2-0.vercel.app/" 
@@ -787,7 +787,31 @@ export default function App() {
                     <div className="w-1 h-1 bg-emerald-400 rounded-full" />
                     Priority access to new features
                   </li>
+                  <li className="flex items-center gap-2">
+                    <div className="w-1 h-1 bg-emerald-400 rounded-full" />
+                    <span className="font-bold text-emerald-700">Live Session Booking</span>
+                  </li>
                 </ul>
+              </div>
+
+              <div className="bg-amber-50 rounded-2xl p-4 mb-8 text-left border border-amber-100">
+                <h4 className="text-xs font-bold text-amber-800 uppercase tracking-widest mb-2 flex items-center gap-2">
+                  <MessageCircle size={14} />
+                  Book a Live Session
+                </h4>
+                <p className="text-[11px] text-amber-700 mb-2">
+                  Premium members can book 1-on-1 sessions with MMA.
+                </p>
+                <div className="space-y-1">
+                  <a href="tel:+2347031629832" className="text-xs font-medium text-zinc-900 flex items-center gap-2 hover:text-emerald-600 transition-colors">
+                    <div className="w-4 h-4 rounded-full bg-white flex items-center justify-center text-[8px]">📞</div>
+                    +234 7031629832
+                  </a>
+                  <a href="mailto:globalinitiative18@gmail.com" className="text-xs font-medium text-zinc-900 flex items-center gap-2 hover:text-emerald-600 transition-colors">
+                    <div className="w-4 h-4 rounded-full bg-white flex items-center justify-center text-[8px]">✉️</div>
+                    globalinitiative18@gmail.com
+                  </a>
+                </div>
               </div>
 
               <div className="space-y-4">

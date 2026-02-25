@@ -1,31 +1,39 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
-import Database from "better-sqlite3";
 import path from "path";
 import { fileURLToPath } from "url";
 import axios from "axios";
 import cookieParser from "cookie-parser";
 import crypto from "crypto";
+import admin from "firebase-admin";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const db = new Database("database.sqlite");
+// Initialize Firebase Admin
+if (!admin.apps.length) {
+  try {
+    if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+      const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount)
+      });
+    } else {
+      // Fallback for local dev or if using default credentials
+      admin.initializeApp({
+        projectId: "healing-with-mma"
+      });
+    }
+  } catch (error) {
+    console.error("Firebase Admin initialization error:", error);
+  }
+}
+
+const db = admin.firestore();
 const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY;
 const APP_URL = process.env.APP_URL || "http://localhost:3000";
 
-// Initialize database
-db.exec(`
-  CREATE TABLE IF NOT EXISTS subscriptions (
-    userId TEXT PRIMARY KEY,
-    isPremium INTEGER DEFAULT 0,
-    hasUsedTrial INTEGER DEFAULT 0,
-    expiresAt TEXT,
-    updatedAt TEXT DEFAULT CURRENT_TIMESTAMP
-  )
-`);
-
-async function startServer() {
+async function createServer() {
   const app = express();
   const PORT = 3000;
 
@@ -33,34 +41,42 @@ async function startServer() {
   app.use(cookieParser());
 
   // API Routes
-  app.get("/api/subscription/status/:userId", (req, res) => {
+  app.get("/api/subscription/status/:userId", async (req, res) => {
     const { userId } = req.params;
-    const row = db.prepare("SELECT * FROM subscriptions WHERE userId = ?").get(userId) as any;
-    
-    if (!row) {
-      return res.json({ isPremium: false, hasUsedTrial: false, expiresAt: null });
+    try {
+      const doc = await db.collection("subscriptions").doc(userId).get();
+      
+      if (!doc.exists) {
+        return res.json({ isPremium: false, hasUsedTrial: false, expiresAt: null });
+      }
+
+      const data = doc.data() as any;
+      const now = new Date();
+      const expiresAt = data.expiresAt ? new Date(data.expiresAt) : null;
+      const isPremium = data.isPremium === 1 && expiresAt && expiresAt > now;
+
+      res.json({ isPremium, hasUsedTrial: data.hasUsedTrial === 1, expiresAt: data.expiresAt });
+    } catch (error) {
+      console.error("Error fetching subscription:", error);
+      res.status(500).json({ error: "Internal server error" });
     }
-
-    const now = new Date();
-    const expiresAt = row.expiresAt ? new Date(row.expiresAt) : null;
-    const isPremium = row.isPremium === 1 && expiresAt && expiresAt > now;
-
-    res.json({ isPremium, hasUsedTrial: row.hasUsedTrial === 1, expiresAt: row.expiresAt });
   });
 
-  app.post("/api/subscription/use-trial", (req, res) => {
+  app.post("/api/subscription/use-trial", async (req, res) => {
     const { userId } = req.body;
     if (!userId) return res.status(400).json({ error: "userId required" });
 
-    db.prepare(`
-      INSERT INTO subscriptions (userId, hasUsedTrial)
-      VALUES (?, 1)
-      ON CONFLICT(userId) DO UPDATE SET
-        hasUsedTrial = 1,
-        updatedAt = CURRENT_TIMESTAMP
-    `).run(userId);
+    try {
+      await db.collection("subscriptions").doc(userId).set({
+        hasUsedTrial: 1,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
 
-    res.json({ success: true });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error using trial:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
   });
 
   // Paystack Verification
@@ -129,14 +145,11 @@ async function startServer() {
         const expiresAt = new Date();
         expiresAt.setMonth(expiresAt.getMonth() + 1);
 
-        db.prepare(`
-          INSERT INTO subscriptions (userId, isPremium, expiresAt)
-          VALUES (?, 1, ?)
-          ON CONFLICT(userId) DO UPDATE SET
-            isPremium = 1,
-            expiresAt = ?,
-            updatedAt = CURRENT_TIMESTAMP
-        `).run(userId, expiresAt.toISOString(), expiresAt.toISOString());
+        await db.collection("subscriptions").doc(userId).set({
+          isPremium: 1,
+          expiresAt: expiresAt.toISOString(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
 
         res.clearCookie("pending_payment_user_id");
         return res.redirect("/?payment_success=true");
@@ -150,7 +163,7 @@ async function startServer() {
   });
 
   // Paystack Webhook
-  app.post("/api/payment/webhook", (req, res) => {
+  app.post("/api/payment/webhook", async (req, res) => {
     const hash = crypto
       .createHmac("sha512", PAYSTACK_SECRET_KEY || "")
       .update(JSON.stringify(req.body))
@@ -162,22 +175,18 @@ async function startServer() {
 
     const event = req.body;
     if (event.event === "charge.success") {
-      const { reference, metadata, customer } = event.data;
-      // Try to get userId from metadata first, then fallback to email if we used it as an ID
+      const { metadata } = event.data;
       const userId = metadata?.user_id;
 
       if (userId) {
         const expiresAt = new Date();
         expiresAt.setMonth(expiresAt.getMonth() + 1);
 
-        db.prepare(`
-          INSERT INTO subscriptions (userId, isPremium, expiresAt)
-          VALUES (?, 1, ?)
-          ON CONFLICT(userId) DO UPDATE SET
-            isPremium = 1,
-            expiresAt = ?,
-            updatedAt = CURRENT_TIMESTAMP
-        `).run(userId, expiresAt.toISOString(), expiresAt.toISOString());
+        await db.collection("subscriptions").doc(userId).set({
+          isPremium: 1,
+          expiresAt: expiresAt.toISOString(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
         
         console.log(`Webhook: Premium granted to user ${userId}`);
       }
@@ -200,9 +209,20 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+  return { app, PORT };
+}
+
+// For local running
+if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
+  createServer().then(({ app, PORT }) => {
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
   });
 }
 
-startServer();
+// Export for Vercel
+export default async (req: any, res: any) => {
+  const { app } = await createServer();
+  return app(req, res);
+};
